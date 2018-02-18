@@ -17,13 +17,14 @@ import net.minecraft.block.ITileEntityProvider;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
+import net.minecraft.stats.StatList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumBlockRenderType;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.NonNullList;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.RayTraceResult;
@@ -95,44 +96,16 @@ public class BlockGlowPanel extends Block implements ITileEntityProvider
 		
 		return state;
 	}
-	
+
 	@Override
 	public void neighborChanged(IBlockState state, World world, BlockPos pos, Block block, BlockPos neighbor)
 	{
 		TileEntityGlowPanel tileEntity = getTileEntityGlowPanel(world, pos);
-		
+
 		if(tileEntity != null && !world.isRemote && !canStay(world, pos))
 		{
-			float motion = 0.7F;
-			double motionX = (rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			ItemStack stack = new ItemStack(MekanismBlocks.GlowPanel, 1, tileEntity.colour.getMetaValue());
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, stack);
-
-			world.spawnEntity(entityItem);
+			dropBlockAsItem(world, pos, world.getBlockState(pos), 0);
 			world.setBlockToAir(pos);
-		}
-	}
-	
-	@Override
-	public void onNeighborChange(IBlockAccess world, BlockPos pos, BlockPos neighbor)
-	{
-		TileEntityGlowPanel tileEntity = getTileEntityGlowPanel(world, pos);
-		
-		if(tileEntity != null && !tileEntity.getWorld().isRemote && !canStay(world, pos))
-		{
-			float motion = 0.7F;
-			double motionX = (rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			ItemStack stack = new ItemStack(MekanismBlocks.GlowPanel, 1, tileEntity.colour.getMetaValue());
-			EntityItem entityItem = new EntityItem(tileEntity.getWorld(), pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, stack);
-
-			tileEntity.getWorld().spawnEntity(entityItem);
-			tileEntity.getWorld().setBlockToAir(pos);
 		}
 	}
 	
@@ -183,36 +156,35 @@ public class BlockGlowPanel extends Block implements ITileEntityProvider
     {
 		return 15;
     }
-	
-	@Override
-	public int quantityDropped(Random random)
-    {
-		return 0;
-    }
-	
-	@Override
-    public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
-	{
+
+	private ItemStack getDropItem(IBlockAccess world, BlockPos pos) {
 		TileEntityGlowPanel tileEntity = (TileEntityGlowPanel)world.getTileEntity(pos);
 		return new ItemStack(MekanismBlocks.GlowPanel, 1, tileEntity.colour.getMetaValue());
 	}
 
 	@Override
-	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest)
+	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
 	{
-		if(!player.capabilities.isCreativeMode && !world.isRemote && willHarvest)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
+		return getDropItem(world, pos);
+	}
 
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, getPickBlock(state, null, world, pos, player));
+	@Override
+	public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune)
+	{
+		drops.add(getDropItem(world, pos));
+	}
 
-			world.spawnEntity(entityItem);
+	@Override
+	public void harvestBlock(World world, EntityPlayer player, BlockPos pos, IBlockState state, TileEntity te, ItemStack stack) {
+		player.addStat(StatList.getBlockStats(this));
+		player.addExhaustion(0.005F);
+	}
+
+	@Override
+	public void onBlockHarvested(World world, BlockPos pos, IBlockState state, EntityPlayer player) {
+		if (!player.capabilities.isCreativeMode) {
+			dropBlockAsItem(world, pos, state, 0);
 		}
-
-		return super.removedByPlayer(state, world, pos, player, willHarvest);
 	}
 	
 	@Override

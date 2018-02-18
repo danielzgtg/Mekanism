@@ -2,7 +2,6 @@ package mekanism.common.block;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
 import javax.annotation.Nullable;
 
@@ -37,10 +36,10 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.stats.StatList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumBlockRenderType;
@@ -222,7 +221,7 @@ public class BlockTransmitter extends Block implements ITileEntityProvider
 			{
 				if(!world.isRemote)
 				{
-					dismantleBlock(state, world, pos, false);
+					dismantleBlock(state, world, pos);
 				}
 
 				return true;
@@ -231,49 +230,54 @@ public class BlockTransmitter extends Block implements ITileEntityProvider
 
 		return false;
 	}
-	
-	@Override
-    public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
+
+	private void dismantleBlock(IBlockState state, World world, BlockPos pos)
 	{
-		ItemStack itemStack = ItemStack.EMPTY;
+		dropBlockAsItem(world, pos, state, 0);
+		world.setBlockToAir(pos);
+	}
+
+	private ItemStack getDropItem(IBlockAccess world, BlockPos pos) {
 		TileEntitySidedPipe tileEntity = getTileEntitySidedPipe(world, pos);
 		if(tileEntity != null)
 		{
-			itemStack = new ItemStack(MekanismBlocks.Transmitter, 1, tileEntity.getTransmitterType().ordinal());
-			
-			if(!itemStack.hasTagCompound())
-			{
-				itemStack.setTagCompound(new NBTTagCompound());
-			}
-			
+			ItemStack itemStack = new ItemStack(MekanismBlocks.Transmitter, 1, tileEntity.getTransmitterType().ordinal());
+			itemStack.setTagCompound(new NBTTagCompound());
+
 			ITierItem tierItem = (ITierItem)itemStack.getItem();
 			tierItem.setBaseTier(itemStack, tileEntity.getBaseTier());
-		}
 
-		return itemStack;
+			return itemStack;
+		} else {
+			return ItemStack.EMPTY;
+		}
 	}
 
-	public ItemStack dismantleBlock(IBlockState state, World world, BlockPos pos, boolean returnBlock)
+	@Override
+	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
 	{
-		ItemStack itemStack = getPickBlock(state, null, world, pos, null);
-
-		world.setBlockToAir(pos);
-
-		if(!returnBlock)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, itemStack);
-
-			world.spawnEntity(entityItem);
-		}
-
-		return itemStack;
+		return getDropItem(world, pos);
 	}
-	
+
+	@Override
+	public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune)
+	{
+		drops.add(getDropItem(world, pos));
+	}
+
+	@Override
+	public void harvestBlock(World world, EntityPlayer player, BlockPos pos, IBlockState state, TileEntity te, ItemStack stack) {
+		player.addStat(StatList.getBlockStats(this));
+		player.addExhaustion(0.005F);
+	}
+
+	@Override
+	public void onBlockHarvested(World world, BlockPos pos, IBlockState state, EntityPlayer player) {
+		if (!player.capabilities.isCreativeMode) {
+			dropBlockAsItem(world, pos, state, 0);
+		}
+	}
+
 	@Override
 	public void getSubBlocks(CreativeTabs creativetabs, NonNullList<ItemStack> list)
 	{
@@ -369,30 +373,6 @@ public class BlockTransmitter extends Block implements ITileEntityProvider
     {
         return false;
     }
-    
-    @Override
-	public int quantityDropped(Random random)
-	{
-		return 0;
-	}
-    
-    @Override
-	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest)
-	{
-		if(!player.capabilities.isCreativeMode && !world.isRemote && willHarvest)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, getPickBlock(state, null, world, pos, player));
-
-			world.spawnEntity(entityItem);
-		}
-
-		return super.removedByPlayer(state, world, pos, player, willHarvest);
-	}
 
     private static AxisAlignedBB getDefaultForTile(TileEntitySidedPipe tile)
     {

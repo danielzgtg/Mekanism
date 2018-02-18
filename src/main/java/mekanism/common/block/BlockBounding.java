@@ -1,7 +1,5 @@
 package mekanism.common.block;
 
-import java.util.Random;
-
 import mekanism.common.block.states.BlockStateBounding;
 import mekanism.common.tile.TileEntityAdvancedBoundingBlock;
 import mekanism.common.tile.TileEntityBoundingBlock;
@@ -10,14 +8,16 @@ import net.minecraft.block.material.Material;
 import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.stats.StatList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumBlockRenderType;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
+import net.minecraft.util.NonNullList;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.RayTraceResult;
+import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 
 public class BlockBounding extends Block
@@ -81,14 +81,27 @@ public class BlockBounding extends Block
 	}
 
 	@Override
-	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest)
+	public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune)
 	{
 		try {
 			TileEntityBoundingBlock tileEntity = (TileEntityBoundingBlock)world.getTileEntity(pos);
 			IBlockState state1 = world.getBlockState(tileEntity.mainPos);
-			return state1.getBlock().removedByPlayer(state1, world, tileEntity.mainPos, player, willHarvest);
+			state1.getBlock().getDrops(drops, world, pos, state1, fortune);
 		} catch(Exception e) {
-			return false;
+			e.printStackTrace();
+		}
+	}
+
+	@Override
+	public void harvestBlock(World world, EntityPlayer player, BlockPos pos, IBlockState state, TileEntity te, ItemStack stack) {
+		player.addStat(StatList.getBlockStats(this));
+		player.addExhaustion(0.005F);
+	}
+
+	@Override
+	public void onBlockHarvested(World world, BlockPos pos, IBlockState state, EntityPlayer player) {
+		if (!player.capabilities.isCreativeMode) {
+			dropBlockAsItem(world, pos, state, 0);
 		}
 	}
 
@@ -113,18 +126,6 @@ public class BlockBounding extends Block
 		} catch(Exception e) {
 			return super.getPlayerRelativeBlockHardness(state, player, world, pos);
 		}
-	}
-
-	@Override
-	public int quantityDropped(Random random)
-	{
-		return 0;
-	}
-
-	@Override
-	public Item getItemDropped(IBlockState state, Random random, int fortune)
-	{
-		return null;
 	}
 
 	@Override

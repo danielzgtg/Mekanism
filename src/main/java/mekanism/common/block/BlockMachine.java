@@ -37,9 +37,9 @@ import mekanism.common.tile.TileEntityFluidTank;
 import mekanism.common.tile.TileEntityLaser;
 import mekanism.common.tile.TileEntityLaserAmplifier;
 import mekanism.common.tile.TileEntityLogisticalSorter;
-import mekanism.common.tile.TileEntityQuantumEntangloporter;
 import mekanism.common.tile.TileEntityMetallurgicInfuser;
 import mekanism.common.tile.TileEntityPersonalChest;
+import mekanism.common.tile.TileEntityQuantumEntangloporter;
 import mekanism.common.tile.prefab.TileEntityBasicBlock;
 import mekanism.common.tile.prefab.TileEntityContainerBlock;
 import mekanism.common.util.FluidContainerUtils;
@@ -58,13 +58,13 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.stats.StatList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumBlockRenderType;
@@ -85,7 +85,6 @@ import net.minecraftforge.fluids.FluidUtil;
 import net.minecraftforge.fluids.capability.IFluidHandlerItem;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
-import buildcraft.api.tools.IToolWrench;
 
 /**
  * Block class for handling multiple machine block IDs.
@@ -434,7 +433,7 @@ public abstract class BlockMachine extends BlockContainer
 
 						if(entityplayer.isSneaking())
 						{
-							dismantleBlock(state, world, pos, false);
+							dismantleBlock(state, world, pos);
 
 							return true;
 						}
@@ -576,6 +575,12 @@ public abstract class BlockMachine extends BlockContainer
 		return false;
 	}
 
+	private void dismantleBlock(IBlockState state, World world, BlockPos pos)
+	{
+		dropBlockAsItem(world, pos, state, 0);
+		world.setBlockToAir(pos);
+	}
+
 	@Override
 	public TileEntity createTileEntity(World world, IBlockState state)
 	{
@@ -599,12 +604,6 @@ public abstract class BlockMachine extends BlockContainer
 	public boolean isOpaqueCube(IBlockState state)
 	{
 		return false;
-	}
-
-	@Override
-	public Item getItemDropped(IBlockState state, Random random, int fortune)
-	{
-		return null;
 	}
 
 	@Override
@@ -640,26 +639,6 @@ public abstract class BlockMachine extends BlockContainer
 			return -1;
 		}
     }
-
-	@Override
-	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest)
-	{
-		if(!player.capabilities.isCreativeMode && !world.isRemote && willHarvest)
-		{
-			TileEntityBasicBlock tileEntity = (TileEntityBasicBlock)world.getTileEntity(pos);
-
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, getPickBlock(state, null, world, pos, player));
-
-			world.spawnEntity(entityItem);
-		}
-
-		return world.setBlockToAir(pos);
-	}
 
 	@Override
 	public boolean hasComparatorInputOverride(IBlockState state)
@@ -843,9 +822,7 @@ public abstract class BlockMachine extends BlockContainer
 		}
 	}
 
-	@Override
-	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
-	{
+	private ItemStack getDropItem(IBlockState state, IBlockAccess world, BlockPos pos) {
 		TileEntityBasicBlock tileEntity = (TileEntityBasicBlock)world.getTileEntity(pos);
 		ItemStack itemStack = new ItemStack(this, 1, state.getBlock().getMetaFromState(state));
 
@@ -853,17 +830,17 @@ public abstract class BlockMachine extends BlockContainer
 		{
 			itemStack.setTagCompound(new NBTTagCompound());
 		}
-		
+
 		if(tileEntity instanceof TileEntityFluidTank)
 		{
 			ITierItem tierItem = (ITierItem)itemStack.getItem();
 			tierItem.setBaseTier(itemStack, ((TileEntityFluidTank)tileEntity).tier.getBaseTier());
 		}
-		
+
 		if(tileEntity instanceof ISecurityTile)
 		{
 			ISecurityItem securityItem = (ISecurityItem)itemStack.getItem();
-			
+
 			if(securityItem.hasSecurity(itemStack))
 			{
 				securityItem.setOwnerUUID(itemStack, ((ISecurityTile)tileEntity).getSecurity().getOwnerUUID());
@@ -883,7 +860,7 @@ public abstract class BlockMachine extends BlockContainer
 			config.getConfig().write(ItemDataUtils.getDataMap(itemStack));
 			config.getEjector().write(ItemDataUtils.getDataMap(itemStack));
 		}
-		
+
 		if(tileEntity instanceof ISustainedData)
 		{
 			((ISustainedData)tileEntity).writeSustainedData(itemStack);
@@ -927,7 +904,7 @@ public abstract class BlockMachine extends BlockContainer
 		if(tileEntity instanceof TileEntityQuantumEntangloporter)
 		{
 			InventoryFrequency frequency = ((TileEntityQuantumEntangloporter)tileEntity).frequency;
-			
+
 			if(frequency != null)
 			{
 				ItemDataUtils.setCompound(itemStack, "entangleporter_frequency", frequency.getIdentity().serialize());
@@ -935,6 +912,31 @@ public abstract class BlockMachine extends BlockContainer
 		}
 
 		return itemStack;
+	}
+
+	@Override
+	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
+	{
+		return getDropItem(state, world, pos);
+	}
+
+	@Override
+	public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune)
+	{
+		drops.add(getDropItem(state, world, pos));
+	}
+
+	@Override
+	public void harvestBlock(World world, EntityPlayer player, BlockPos pos, IBlockState state, TileEntity te, ItemStack stack) {
+		player.addStat(StatList.getBlockStats(this));
+		player.addExhaustion(0.005F);
+	}
+
+	@Override
+	public void onBlockHarvested(World world, BlockPos pos, IBlockState state, EntityPlayer player) {
+		if (!player.capabilities.isCreativeMode) {
+			dropBlockAsItem(world, pos, state, 0);
+		}
 	}
 
 	@Override
@@ -949,27 +951,6 @@ public abstract class BlockMachine extends BlockContainer
 			default:
 				return false;
 		}
-	}
-
-	public ItemStack dismantleBlock(IBlockState state, World world, BlockPos pos, boolean returnBlock)
-	{
-		ItemStack itemStack = getPickBlock(state, null, world, pos, null);
-
-		world.setBlockToAir(pos);
-
-		if(!returnBlock)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, itemStack);
-
-			world.spawnEntity(entityItem);
-		}
-
-		return itemStack;
 	}
 
 	@Override

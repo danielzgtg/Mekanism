@@ -1,19 +1,15 @@
 package mekanism.common.block;
 
-import java.util.Random;
-
 import mekanism.api.IMekWrench;
 import mekanism.api.gas.IGasItem;
 import mekanism.common.Mekanism;
 import mekanism.common.MekanismBlocks;
-import mekanism.common.base.ISideConfiguration;
 import mekanism.common.base.ISustainedInventory;
 import mekanism.common.base.ITierItem;
 import mekanism.common.block.states.BlockStateFacing;
 import mekanism.common.block.states.BlockStateGasTank;
 import mekanism.common.integration.wrenches.Wrenches;
 import mekanism.common.security.ISecurityItem;
-import mekanism.common.security.ISecurityTile;
 import mekanism.common.tile.TileEntityGasTank;
 import mekanism.common.tile.prefab.TileEntityBasicBlock;
 import mekanism.common.util.ItemDataUtils;
@@ -25,15 +21,15 @@ import net.minecraft.block.material.Material;
 import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.stats.StatList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumBlockRenderType;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
+import net.minecraft.util.NonNullList;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
@@ -41,7 +37,6 @@ import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
-import buildcraft.api.tools.IToolWrench;
 
 public class BlockGasTank extends BlockContainer
 {
@@ -163,7 +158,7 @@ public class BlockGasTank extends BlockContainer
 
 						if(entityplayer.isSneaking())
 						{
-							dismantleBlock(state, world, pos, false);
+							dismantleBlock(state, world, pos);
 
 							return true;
 						}
@@ -204,55 +199,10 @@ public class BlockGasTank extends BlockContainer
 		return false;
 	}
 
-	@Override
-	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest)
+	private void dismantleBlock(IBlockState state, World world, BlockPos pos)
 	{
-		if(!player.capabilities.isCreativeMode && !world.isRemote && willHarvest)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, getPickBlock(state, null, world, pos, player));
-
-			world.spawnEntity(entityItem);
-		}
-
-		return world.setBlockToAir(pos);
-	}
-
-	public ItemStack dismantleBlock(IBlockState state, World world, BlockPos pos, boolean returnBlock)
-	{
-		ItemStack itemStack = getPickBlock(state, null, world, pos, null);
-
+		dropBlockAsItem(world, pos, state, 0);
 		world.setBlockToAir(pos);
-
-		if(!returnBlock)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, itemStack);
-
-			world.spawnEntity(entityItem);
-		}
-
-		return itemStack;
-	}
-
-	@Override
-	public int quantityDropped(Random random)
-	{
-		return 0;
-	}
-
-	@Override
-	public Item getItemDropped(IBlockState state, Random random, int fortune)
-	{
-		return null;
 	}
 
 	@Override
@@ -279,36 +229,26 @@ public class BlockGasTank extends BlockContainer
 		return new TileEntityGasTank();
 	}
 
-	@Override
-	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
-	{
+	private ItemStack getDropItem(IBlockAccess world, BlockPos pos) {
 		TileEntityGasTank tileEntity = (TileEntityGasTank)world.getTileEntity(pos);
-		ItemStack itemStack = new ItemStack(MekanismBlocks.GasTank);
-		
-		if(itemStack.hasTagCompound())
-		{
-			itemStack.setTagCompound(new NBTTagCompound());
-		}
-		
-		if(tileEntity instanceof ISecurityTile)
-		{
-			ISecurityItem securityItem = (ISecurityItem)itemStack.getItem();
-			
-			if(securityItem.hasSecurity(itemStack))
-			{
-				securityItem.setOwnerUUID(itemStack, ((ISecurityTile)tileEntity).getSecurity().getOwnerUUID());
-				securityItem.setSecurity(itemStack, ((ISecurityTile)tileEntity).getSecurity().getMode());
-			}
-		}
-		
-		if(tileEntity instanceof ISideConfiguration)
-		{
-			ISideConfiguration config = (ISideConfiguration)tileEntity;
 
-			config.getConfig().write(ItemDataUtils.getDataMap(itemStack));
-			config.getEjector().write(ItemDataUtils.getDataMap(itemStack));
+		ItemStack itemStack = new ItemStack(MekanismBlocks.GasTank);
+		if (tileEntity == null)
+		{
+			throw new NullPointerException();
 		}
-		
+		itemStack.setTagCompound(new NBTTagCompound());
+
+		ISecurityItem securityItem = (ISecurityItem)itemStack.getItem();
+		if(securityItem.hasSecurity(itemStack))
+		{
+			securityItem.setOwnerUUID(itemStack, tileEntity.getSecurity().getOwnerUUID());
+			securityItem.setSecurity(itemStack, tileEntity.getSecurity().getMode());
+		}
+
+		tileEntity.getConfig().write(ItemDataUtils.getDataMap(itemStack));
+		tileEntity.getEjector().write(ItemDataUtils.getDataMap(itemStack));
+
 		ITierItem tierItem = (ITierItem)itemStack.getItem();
 		tierItem.setBaseTier(itemStack, tileEntity.tier.getBaseTier());
 
@@ -319,6 +259,31 @@ public class BlockGasTank extends BlockContainer
 		inventory.setInventory(tileEntity.getInventory(), itemStack);
 
 		return itemStack;
+	}
+
+	@Override
+	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
+	{
+		return getDropItem(world, pos);
+	}
+
+	@Override
+	public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune)
+	{
+		drops.add(getDropItem(world, pos));
+	}
+
+	@Override
+	public void harvestBlock(World world, EntityPlayer player, BlockPos pos, IBlockState state, TileEntity te, ItemStack stack) {
+		player.addStat(StatList.getBlockStats(this));
+		player.addExhaustion(0.005F);
+	}
+
+	@Override
+	public void onBlockHarvested(World world, BlockPos pos, IBlockState state, EntityPlayer player) {
+		if (!player.capabilities.isCreativeMode) {
+			dropBlockAsItem(world, pos, state, 0);
+		}
 	}
 
 	@Override

@@ -38,11 +38,10 @@ import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.stats.StatList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumBlockRenderType;
@@ -59,7 +58,6 @@ import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
-import buildcraft.api.tools.IToolWrench;
 
 /**
  * Block class for handling multiple generator block IDs.
@@ -347,14 +345,7 @@ public abstract class BlockGenerator extends BlockContainer
 			
 			if(amount > 0)
 			{
-				float motion = 0.7F;
-				double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-				double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-				double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-				EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, new ItemStack(GeneratorsItems.TurbineBlade, amount));
-
-				world.spawnEntity(entityItem);
+				spawnAsEntity(world, pos, new ItemStack(GeneratorsItems.TurbineBlade, amount));
 			}
 		}
 
@@ -392,7 +383,7 @@ public abstract class BlockGenerator extends BlockContainer
 
 						if(entityplayer.isSneaking())
 						{
-							dismantleBlock(state, world, pos, false);
+							dismantleBlock(state, world, pos);
 
 							return true;
 						}
@@ -414,16 +405,16 @@ public abstract class BlockGenerator extends BlockContainer
 				}
 			}
 		}
-		
+
 		if(metadata == GeneratorType.TURBINE_CASING.meta || metadata == GeneratorType.TURBINE_VALVE.meta || metadata == GeneratorType.TURBINE_VENT.meta)
 		{
 			return ((IMultiblock<?>)tileEntity).onActivate(entityplayer, hand, stack);
 		}
-		
+
 		if(metadata == GeneratorType.TURBINE_ROTOR.meta)
 		{
 			TileEntityTurbineRotor rod = (TileEntityTurbineRotor)tileEntity;
-			
+
 			if(!entityplayer.isSneaking())
 			{
 				if(!stack.isEmpty() && stack.getItem() == GeneratorsItems.TurbineBlade)
@@ -433,14 +424,14 @@ public abstract class BlockGenerator extends BlockContainer
 						if(!entityplayer.capabilities.isCreativeMode)
 						{
 							stack.shrink(1);
-							
+
 							if(stack.getCount() == 0)
 							{
 								entityplayer.setHeldItem(hand, ItemStack.EMPTY);
 							}
 						}
 					}
-					
+
 					return true;
 				}
 			}
@@ -473,13 +464,13 @@ public abstract class BlockGenerator extends BlockContainer
 						}
 					}
 				}
-				
+
 				return true;
 			}
-			
+
 			return false;
 		}
-		
+
 		int guiId = GeneratorType.get(getGeneratorBlock(), metadata).guiId;
 
 		if(guiId != -1 && tileEntity != null)
@@ -493,7 +484,7 @@ public abstract class BlockGenerator extends BlockContainer
 				else {
 					SecurityUtils.displayNoAccess(entityplayer);
 				}
-				
+
 				return true;
 			}
 		}
@@ -501,10 +492,10 @@ public abstract class BlockGenerator extends BlockContainer
 		return false;
 	}
 
-	@Override
-	public int quantityDropped(Random random)
+	private void dismantleBlock(IBlockState state, World world, BlockPos pos)
 	{
-		return 0;
+		dropBlockAsItem(world, pos, state, 0);
+		world.setBlockToAir(pos);
 	}
 
 	@Override
@@ -518,12 +509,6 @@ public abstract class BlockGenerator extends BlockContainer
 		}
 
 		return GeneratorType.get(getGeneratorBlock(), metadata).create();
-	}
-
-	@Override
-	public Item getItemDropped(IBlockState state, Random random, int fortune)
-	{
-		return null;
 	}
 	
 	@Override
@@ -574,44 +559,23 @@ public abstract class BlockGenerator extends BlockContainer
 		}
 	}
 
-	@Override
-	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest)
-	{
-		if(!player.capabilities.isCreativeMode && !world.isRemote && willHarvest)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, getPickBlock(state, null, world, pos, player));
-
-			world.spawnEntity(entityItem);
-		}
-
-		return world.setBlockToAir(pos);
-	}
-
-	@Override
-    public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
-	{
+	private ItemStack getDropItem(IBlockState state, IBlockAccess world, BlockPos pos) {
 		TileEntityBasicBlock tileEntity = (TileEntityBasicBlock)world.getTileEntity(pos);
-		ItemStack itemStack = new ItemStack(GeneratorsBlocks.Generator, 1, state.getBlock().getMetaFromState(state));
-
-		if(itemStack.getTagCompound() == null && !(tileEntity instanceof TileEntityMultiblock))
-		{
-			itemStack.setTagCompound(new NBTTagCompound());
-		}
-		
 		if(tileEntity == null)
 		{
 			return ItemStack.EMPTY;
 		}
-		
+
+		ItemStack itemStack = new ItemStack(GeneratorsBlocks.Generator, 1, state.getBlock().getMetaFromState(state));
+		if(!(tileEntity instanceof TileEntityMultiblock))
+		{
+			itemStack.setTagCompound(new NBTTagCompound());
+		}
+
 		if(tileEntity instanceof ISecurityTile)
 		{
 			ISecurityItem securityItem = (ISecurityItem)itemStack.getItem();
-			
+
 			if(securityItem.hasSecurity(itemStack))
 			{
 				securityItem.setOwnerUUID(itemStack, ((ISecurityTile)tileEntity).getSecurity().getOwnerUUID());
@@ -630,7 +594,7 @@ public abstract class BlockGenerator extends BlockContainer
 			ISustainedInventory inventory = (ISustainedInventory)itemStack.getItem();
 			inventory.setInventory(((TileEntityContainerBlock)tileEntity).getInventory(), itemStack);
 		}
-		
+
 		if(tileEntity instanceof ISustainedData)
 		{
 			((ISustainedData)tileEntity).writeSustainedData(itemStack);
@@ -650,25 +614,29 @@ public abstract class BlockGenerator extends BlockContainer
 		return itemStack;
 	}
 
-	public ItemStack dismantleBlock(IBlockState state, World world, BlockPos pos, boolean returnBlock)
+	@Override
+    public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
 	{
-		ItemStack itemStack = getPickBlock(state, null, world, pos, null);
+		return getDropItem(state, world, pos);
+	}
 
-		world.setBlockToAir(pos);
+	@Override
+	public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune)
+	{
+		drops.add(getDropItem(state, world, pos));
+	}
 
-		if(!returnBlock)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
+	@Override
+	public void harvestBlock(World world, EntityPlayer player, BlockPos pos, IBlockState state, TileEntity te, ItemStack stack) {
+		player.addStat(StatList.getBlockStats(this));
+		player.addExhaustion(0.005F);
+	}
 
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, itemStack);
-
-			world.spawnEntity(entityItem);
+	@Override
+	public void onBlockHarvested(World world, BlockPos pos, IBlockState state, EntityPlayer player) {
+		if (!player.capabilities.isCreativeMode) {
+			dropBlockAsItem(world, pos, state, 0);
 		}
-
-		return itemStack;
 	}
 
 	@Override
