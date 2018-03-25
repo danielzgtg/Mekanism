@@ -2,7 +2,6 @@ package mekanism.common.block;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
 import javax.annotation.Nullable;
 
@@ -30,6 +29,7 @@ import mekanism.common.util.MekanismUtils;
 import mekanism.common.util.MultipartUtils;
 import mekanism.common.util.MultipartUtils.AdvancedRayTraceResult;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockFlowerPot;
 import net.minecraft.block.ITileEntityProvider;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.BlockStateContainer;
@@ -37,7 +37,6 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -222,7 +221,7 @@ public class BlockTransmitter extends Block implements ITileEntityProvider
 			{
 				if(!world.isRemote)
 				{
-					dismantleBlock(state, world, pos, false);
+					MekanismUtils.dismantleBlock(this, state, world, pos);
 				}
 
 				return true;
@@ -231,49 +230,81 @@ public class BlockTransmitter extends Block implements ITileEntityProvider
 
 		return false;
 	}
-	
-	@Override
-    public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
-	{
-		ItemStack itemStack = ItemStack.EMPTY;
+
+	private ItemStack getDropItem(IBlockAccess world, BlockPos pos) {
 		TileEntitySidedPipe tileEntity = getTileEntitySidedPipe(world, pos);
 		if(tileEntity != null)
 		{
-			itemStack = new ItemStack(MekanismBlocks.Transmitter, 1, tileEntity.getTransmitterType().ordinal());
-			
-			if(!itemStack.hasTagCompound())
-			{
-				itemStack.setTagCompound(new NBTTagCompound());
-			}
-			
+			ItemStack itemStack = new ItemStack(MekanismBlocks.Transmitter, 1,
+					tileEntity.getTransmitterType().ordinal());
+			itemStack.setTagCompound(new NBTTagCompound());
+
 			ITierItem tierItem = (ITierItem)itemStack.getItem();
 			tierItem.setBaseTier(itemStack, tileEntity.getBaseTier());
-		}
 
-		return itemStack;
+			return itemStack;
+		} else {
+			return ItemStack.EMPTY;
+		}
 	}
 
-	public ItemStack dismantleBlock(IBlockState state, World world, BlockPos pos, boolean returnBlock)
+	@Override
+	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
 	{
-		ItemStack itemStack = getPickBlock(state, null, world, pos, null);
-
-		world.setBlockToAir(pos);
-
-		if(!returnBlock)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, itemStack);
-
-			world.spawnEntity(entityItem);
-		}
-
-		return itemStack;
+		return getDropItem(world, pos);
 	}
-	
+
+	@Override
+	public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune)
+	{
+		drops.add(getDropItem(world, pos));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * Keep tile entity in world until after
+	 * {@link Block#getDrops(NonNullList, IBlockAccess, BlockPos, IBlockState, int)}.
+	 * Used together with {@link Block#harvestBlock(World, EntityPlayer, BlockPos, IBlockState, TileEntity, ItemStack)}.
+	 *
+	 * @author Forge
+	 * @see BlockFlowerPot#removedByPlayer(IBlockState, World, BlockPos, EntityPlayer, boolean)
+	 */
+	@Override
+	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player,
+	                               boolean willHarvest)
+	{
+		return willHarvest || super.removedByPlayer(state, world, pos, player, willHarvest);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * Used together with {@link Block#removedByPlayer(IBlockState, World, BlockPos, EntityPlayer, boolean)}.
+	 *
+	 * @author Forge
+	 * @see BlockFlowerPot#harvestBlock(World, EntityPlayer, BlockPos, IBlockState, TileEntity, ItemStack)
+	 */
+	@Override
+	public void harvestBlock(World world, EntityPlayer player, BlockPos pos,
+	                         IBlockState state, TileEntity te, ItemStack stack)
+	{
+		super.harvestBlock(world, player, pos, state, te, stack);
+		world.setBlockToAir(pos);
+	}
+
+	/**
+	 * Returns that this "cannot" be silk touched.
+	 * This is so that {@link Block#getSilkTouchDrop(IBlockState)} is not called, because only
+	 * {@link Block#getDrops(NonNullList, IBlockAccess, BlockPos, IBlockState, int)} supports tile entities.
+	 * Our blocks keep their inventory and other behave like they are being silk touched by default anyway.
+	 *
+	 * @return false
+	 */
+	@Override
+	protected boolean canSilkHarvest()
+	{
+		return false;
+	}
+
 	@Override
 	public void getSubBlocks(CreativeTabs creativetabs, NonNullList<ItemStack> list)
 	{
@@ -369,30 +400,6 @@ public class BlockTransmitter extends Block implements ITileEntityProvider
     {
         return false;
     }
-    
-    @Override
-	public int quantityDropped(Random random)
-	{
-		return 0;
-	}
-    
-    @Override
-	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest)
-	{
-		if(!player.capabilities.isCreativeMode && !world.isRemote && willHarvest)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, getPickBlock(state, null, world, pos, player));
-
-			world.spawnEntity(entityItem);
-		}
-
-		return super.removedByPlayer(state, world, pos, player, willHarvest);
-	}
 
     private static AxisAlignedBB getDefaultForTile(TileEntitySidedPipe tile)
     {

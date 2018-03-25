@@ -1,6 +1,5 @@
 package mekanism.common.block;
 
-import java.util.Random;
 import java.util.UUID;
 
 import mekanism.api.Coord4D;
@@ -38,6 +37,7 @@ import mekanism.common.util.MekanismUtils;
 import mekanism.common.util.SecurityUtils;
 import mekanism.common.util.StackUtils;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockFlowerPot;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.properties.PropertyEnum;
 import net.minecraft.block.state.BlockStateContainer;
@@ -50,7 +50,6 @@ import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.SoundEvents;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
@@ -73,7 +72,6 @@ import net.minecraftforge.fluids.capability.IFluidHandlerItem;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
-import buildcraft.api.tools.IToolWrench;
 
 /**
  * Block class for handling multiple metal block IDs.
@@ -449,7 +447,7 @@ public abstract class BlockBasic extends Block
 
 						if(entityplayer.isSneaking())
 						{
-							dismantleBlock(state, world, pos, false);
+							MekanismUtils.dismantleBlock(this, state, world, pos);
 							return true;
 						}
 
@@ -817,8 +815,7 @@ public abstract class BlockBasic extends Block
 		super.breakBlock(world, pos, state);
 	}
 
-	@Override
-	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
+	private ItemStack getDropItem(IBlockState state, IBlockAccess world, BlockPos pos)
 	{
 		BasicBlockType type = BasicBlockType.get(state);
 		ItemStack ret = new ItemStack(this, 1, state.getBlock().getMetaFromState(state));
@@ -830,7 +827,7 @@ public abstract class BlockBasic extends Block
 
 			((ITierItem)ret.getItem()).setBaseTier(ret, tileEntity.tier.getBaseTier());
 			inv.setItemCount(tileEntity.getItemCount());
-			
+
 			if(tileEntity.getItemCount() > 0)
 			{
 				inv.setItemType(tileEntity.itemType);
@@ -846,9 +843,9 @@ public abstract class BlockBasic extends Block
 			TileEntityInductionProvider tileEntity = (TileEntityInductionProvider)world.getTileEntity(pos);
 			((ItemBlockBasic)ret.getItem()).setBaseTier(ret, tileEntity.tier.getBaseTier());
 		}
-		
+
 		TileEntity tileEntity = world.getTileEntity(pos);
-		
+
 		if(tileEntity instanceof IStrictEnergyStorage)
 		{
 			IEnergizedItem energizedItem = (IEnergizedItem)ret.getItem();
@@ -859,48 +856,60 @@ public abstract class BlockBasic extends Block
 	}
 
 	@Override
-	public Item getItemDropped(IBlockState state, Random random, int fortune)
+	public ItemStack getPickBlock(IBlockState state, RayTraceResult target, World world, BlockPos pos, EntityPlayer player)
 	{
-		return null;
+		return getDropItem(state, world, pos);
 	}
 
 	@Override
-	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player, boolean willHarvest)
+	public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune)
 	{
-		if(!player.capabilities.isCreativeMode && !world.isRemote && willHarvest)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, getPickBlock(state, null, world, pos, player));
-
-			world.spawnEntity(entityItem);
-		}
-
-		return world.setBlockToAir(pos);
+		drops.add(getDropItem(state, world, pos));
 	}
 
-	public ItemStack dismantleBlock(IBlockState state, World world, BlockPos pos, boolean returnBlock)
+	/**
+	 * {@inheritDoc}
+	 * Keep tile entity in world until after
+	 * {@link Block#getDrops(NonNullList, IBlockAccess, BlockPos, IBlockState, int)}.
+	 * Used together with {@link Block#harvestBlock(World, EntityPlayer, BlockPos, IBlockState, TileEntity, ItemStack)}.
+	 *
+	 * @author Forge
+	 * @see BlockFlowerPot#removedByPlayer(IBlockState, World, BlockPos, EntityPlayer, boolean)
+	 */
+	@Override
+	public boolean removedByPlayer(IBlockState state, World world, BlockPos pos, EntityPlayer player,
+	                               boolean willHarvest)
 	{
-		ItemStack itemStack = getPickBlock(state, null, world, pos, null);
+		return willHarvest || super.removedByPlayer(state, world, pos, player, willHarvest);
+	}
 
+	/**
+	 * {@inheritDoc}
+	 * Used together with {@link Block#removedByPlayer(IBlockState, World, BlockPos, EntityPlayer, boolean)}.
+	 *
+	 * @author Forge
+	 * @see BlockFlowerPot#harvestBlock(World, EntityPlayer, BlockPos, IBlockState, TileEntity, ItemStack)
+	 */
+	@Override
+	public void harvestBlock(World world, EntityPlayer player, BlockPos pos,
+	                         IBlockState state, TileEntity te, ItemStack stack)
+	{
+		super.harvestBlock(world, player, pos, state, te, stack);
 		world.setBlockToAir(pos);
+	}
 
-		if(!returnBlock)
-		{
-			float motion = 0.7F;
-			double motionX = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionY = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-			double motionZ = (world.rand.nextFloat() * motion) + (1.0F - motion) * 0.5D;
-
-			EntityItem entityItem = new EntityItem(world, pos.getX() + motionX, pos.getY() + motionY, pos.getZ() + motionZ, itemStack);
-
-			world.spawnEntity(entityItem);
-		}
-
-		return itemStack;
+	/**
+	 * Returns that this "cannot" be silk touched.
+	 * This is so that {@link Block#getSilkTouchDrop(IBlockState)} is not called, because only
+	 * {@link Block#getDrops(NonNullList, IBlockAccess, BlockPos, IBlockState, int)} supports tile entities.
+	 * Our blocks keep their inventory and other behave like they are being silk touched by default anyway.
+	 *
+	 * @return false
+	 */
+	@Override
+	protected boolean canSilkHarvest()
+	{
+		return false;
 	}
 
 	@Override
